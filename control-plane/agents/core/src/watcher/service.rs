@@ -5,8 +5,12 @@ use crate::{
 pub use common::errors::SvcError;
 pub use common_lib::mbus_api::{Message, MessageId, ReceivedMessage};
 use common_lib::{
-    mbus_api::message_bus::v0::Watches,
+    mbus_api::{message_bus::v0::Watches, ReplyError},
     types::v0::message_bus::{CreateWatch, DeleteWatch, GetWatchers},
+};
+use grpc::{
+    context::Context,
+    operations::watcher::traits::{GetWatcherInfo, WatcherInfo, WatcherOperations},
 };
 pub use std::convert::TryInto;
 use std::sync::Arc;
@@ -15,6 +19,37 @@ use tokio::sync::Mutex;
 #[derive(Clone, Debug)]
 pub(super) struct Service {
     watcher: Arc<Mutex<StoreWatcher>>,
+}
+
+#[tonic::async_trait]
+impl WatcherOperations for Service {
+    async fn create(&self, req: &dyn WatcherInfo, _ctx: Option<Context>) -> Result<(), ReplyError> {
+        let create_watch = req.into();
+        let service = self.clone();
+        Context::spawn(async move { service.create_watch(&create_watch).await }).await??;
+        Ok(())
+    }
+
+    async fn get(
+        &self,
+        req: &dyn GetWatcherInfo,
+        _ctx: Option<Context>,
+    ) -> Result<Watches, ReplyError> {
+        let get_watches = req.into();
+        let watches = self.get_watchers(&get_watches).await?;
+        Ok(watches)
+    }
+
+    async fn destroy(
+        &self,
+        req: &dyn WatcherInfo,
+        _ctx: Option<Context>,
+    ) -> Result<(), ReplyError> {
+        let destroy_watch = req.into();
+        let service = self.clone();
+        Context::spawn(async move { service.delete_watch(&destroy_watch).await }).await??;
+        Ok(())
+    }
 }
 
 /// Watcher Agent's Service

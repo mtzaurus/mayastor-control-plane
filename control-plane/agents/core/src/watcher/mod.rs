@@ -1,25 +1,15 @@
 pub mod service;
 mod watch;
 
-use std::{convert::TryInto, marker::PhantomData};
-
-use super::{core::registry::Registry, handler, impl_request_handler};
-use async_trait::async_trait;
-use common::errors::SvcError;
-use common_lib::{
-    mbus_api::*,
-    types::v0::message_bus::{ChannelVs, CreateWatch, DeleteWatch, GetWatchers},
-};
+use super::core::registry::Registry;
+use grpc::operations::watcher::server::WatcherServer;
+use std::sync::Arc;
 
 pub(crate) fn configure(builder: common::Service) -> common::Service {
     let registry = builder.get_shared_state::<Registry>().clone();
-    builder
-        .with_channel(ChannelVs::Watcher)
-        .with_default_liveness()
-        .with_shared_state(service::Service::new(registry))
-        .with_subscription(handler!(CreateWatch))
-        .with_subscription(handler!(GetWatchers))
-        .with_subscription(handler!(DeleteWatch))
+    let new_service = Arc::new(service::Service::new(registry));
+    let watcher_service = WatcherServer::new(new_service);
+    builder.with_shared_state(watcher_service)
 }
 
 #[cfg(test)]
