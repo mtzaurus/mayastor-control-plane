@@ -69,6 +69,8 @@ pub fn default_options() -> StartOptions {
         .with_io_engines(1)
         .with_show_info(true)
         .with_build_all(true)
+        // NATS will no longer be deployed for tests
+        .with_nats(false)
         .with_env_tags(vec!["CARGO_PKG_NAME"])
 }
 

@@ -11,13 +11,8 @@ mod kibana;
 pub mod nats;
 mod rest;
 
-use self::nats::bus;
 use super::StartOptions;
 use async_trait::async_trait;
-use common_lib::{
-    mbus_api::Message,
-    types::v0::message_bus::{ChannelVs, Liveness},
-};
 
 use composer::{Binary, Builder, BuilderConfigure, ComposeTest, ContainerSpec};
 use futures::future::{join_all, try_join_all};
@@ -422,7 +417,7 @@ impl_component! {
     Kibana,     1,
     Core,       3,
     JsonGrpc,   3,
-    Rest,       3,
+    Rest,       4,
     IoEngine,   4,
     Csi,        5,
 }
