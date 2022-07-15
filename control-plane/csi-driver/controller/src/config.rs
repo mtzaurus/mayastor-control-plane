@@ -1,7 +1,7 @@
 use anyhow::Context;
 use clap::ArgMatches;
 use once_cell::sync::OnceCell;
-use std::{collections::HashMap, time::Duration};
+use std::time::Duration;
 
 static CONFIG: OnceCell<CsiControllerConfig> = OnceCell::new();
 
@@ -11,10 +11,7 @@ pub struct CsiControllerConfig {
     rest_endpoint: String,
     /// I/O timeout for REST API operations.
     io_timeout: Duration,
-    /// IO-Engine DaemonSet selector labels.
-    io_engine_selector: HashMap<String, String>,
 }
-
 impl CsiControllerConfig {
     /// Initialize global instance of the CSI config. Must be called prior to using the config.
     pub fn initialize(args: &ArgMatches) -> anyhow::Result<()> {
@@ -32,32 +29,9 @@ impl CsiControllerConfig {
             .context("I/O timeout must be specified")?
             .parse::<humantime::Duration>()?;
 
-        let io_engine_selector = {
-            let values = match args.values_of("io-engine-selector") {
-                Some(values) => values.map(ToString::to_string).collect::<Vec<_>>(),
-                None => vec![Self::default_io_selector()],
-            };
-            let values = values.iter().map(|source| match source.split_once(':') {
-                None => Err(anyhow::anyhow!(
-                    "Each io-engine-selector label must be in the format: 'Key=Value'"
-                )),
-                Some((key, value)) => Ok((key.to_string(), value.to_string())),
-            });
-            if let Some(error) = values.clone().find_map(|f| match f {
-                Ok(_) => None,
-                Err(error) => Some(error),
-            }) {
-                return Err(error);
-            }
-            values
-                .filter_map(|source| source.ok())
-                .collect::<HashMap<_, _>>()
-        };
-
         CONFIG.get_or_init(|| Self {
             rest_endpoint: rest_endpoint.into(),
             io_timeout: io_timeout.into(),
-            io_engine_selector,
         });
         Ok(())
     }
@@ -86,10 +60,5 @@ impl CsiControllerConfig {
     /// Get I/O timeout for REST API operations.
     pub fn io_timeout(&self) -> Duration {
         self.io_timeout
-    }
-
-    /// IO-Engine DaemonSet selector labels.
-    pub fn io_engine_selector(&self) -> HashMap<String, String> {
-        self.io_engine_selector.clone()
     }
 }

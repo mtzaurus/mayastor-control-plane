@@ -3,14 +3,13 @@ use common_lib::types::v0::openapi::{
     clients,
     clients::tower::StatusCode,
     models::{
-        CreateVolumeBody, ExplicitNodeTopology, LabelledTopology, Node, NodeTopology, Pool,
-        PoolTopology, RestJsonError, Topology, Volume, VolumePolicy, VolumeShareProtocol, Volumes,
+        CreateVolumeBody, Node, NodeTopology, Pool, PoolTopology, RestJsonError, Topology, Volume,
+        VolumePolicy, VolumeShareProtocol, Volumes,
     },
 };
 
 use anyhow::{anyhow, Result};
 use once_cell::sync::OnceCell;
-use std::collections::HashMap;
 use tracing::{debug, info, instrument};
 
 #[derive(Debug, PartialEq, Eq)]
@@ -35,21 +34,15 @@ pub enum ApiClientError {
 /// Placeholder for volume topology for volume creation operation.
 #[derive(Debug)]
 pub struct CreateVolumeTopology {
-    inclusive_label_topology: HashMap<String, String>,
-    allowed_nodes: Vec<String>,
-    preferred_nodes: Vec<String>,
+    node_topology: NodeTopology,
+    pool_topology: PoolTopology,
 }
 
 impl CreateVolumeTopology {
-    pub fn new(
-        allowed_nodes: Vec<String>,
-        preferred_nodes: Vec<String>,
-        inclusive_label_topology: HashMap<String, String>,
-    ) -> Self {
+    pub fn new(node_topology: NodeTopology, pool_topology: PoolTopology) -> Self {
         Self {
-            allowed_nodes,
-            preferred_nodes,
-            inclusive_label_topology,
+            node_topology,
+            pool_topology,
         }
     }
 }
@@ -188,17 +181,10 @@ impl IoEngineApiClient {
         replicas: u8,
         size: u64,
         volume_topology: CreateVolumeTopology,
-        _pinned_volume: bool,
     ) -> Result<Volume, ApiClientError> {
         let topology = Topology::new_all(
-            Some(NodeTopology::explicit(ExplicitNodeTopology::new(
-                volume_topology.allowed_nodes,
-                volume_topology.preferred_nodes,
-            ))),
-            Some(PoolTopology::labelled(LabelledTopology::new(
-                HashMap::new(),
-                volume_topology.inclusive_label_topology,
-            ))),
+            Some(volume_topology.node_topology),
+            Some(volume_topology.pool_topology),
         );
 
         let req = CreateVolumeBody {
