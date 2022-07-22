@@ -52,6 +52,7 @@ mod tests {
                 endpoint.clone(),
                 NodeLabels::new(),
                 None,
+                None,
             )),
             Some(NodeState::new(id, endpoint, status)),
         )

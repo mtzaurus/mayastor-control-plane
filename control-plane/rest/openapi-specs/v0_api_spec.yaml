@@ -2121,6 +2121,7 @@ components:
         grpcEndpoint: '10.1.0.5:10124'
         id: io-engine-1
         cordonLabels: [label-1]
+        drainLabels: [label-1]
       description: io-engine storage node information
       type: object
       properties:
@@ -2133,10 +2134,15 @@ components:
           type: array
           items:
             type: string
+        drainLabels:
+          type: array
+          items:
+            type: string
       required:
         - grpcEndpoint
         - id
         - cordonLabels
+        - drainLabels
     NodeState:
       example:
         grpcEndpoint: '10.1.0.5:10124'
