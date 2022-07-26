@@ -101,7 +101,9 @@ def a_control_plane_io_engine_instances_and_a_pool():
 @given("a request for a volume")
 def a_request_for_a_volume(create_request):
     """a request for a volume."""
-    request = CreateVolumeBody(VolumePolicy(False), NUM_VOLUME_REPLICAS, VOLUME_SIZE)
+    request = CreateVolumeBody(
+        VolumePolicy(False), NUM_VOLUME_REPLICAS, VOLUME_SIZE, False
+    )
     create_request[CREATE_REQUEST_KEY] = request
 
 
