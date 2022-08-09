@@ -238,6 +238,7 @@ version = "1.0.0"
 dependencies = [
  "actix-rt",
  "actix-web",
+ "anyhow",
  "async-trait",
  "chrono",
  "common-lib",
@@ -252,6 +253,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "lazy_static",
+ "nvmeadm",
  "once_cell",
  "opentelemetry",
  "opentelemetry-jaeger",
