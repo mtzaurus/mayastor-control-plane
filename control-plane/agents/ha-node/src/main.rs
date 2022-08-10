@@ -39,6 +39,10 @@ pub struct Cli {
     /// Path failure detection period.
     #[structopt(short, long, env = "DETECTION_PERIOD", default_value = NVME_PATH_CHECK_PERIOD)]
     detection_period: humantime::Duration,
+
+    /// Trace rest requests to the Jaeger endpoint agent
+    #[structopt(long, short)]
+    jaeger: Option<String>,
 }
 
 static CLUSTER_AGENT_CLIENT: OnceCell<ClusterAgentClient> = OnceCell::new();
@@ -64,8 +68,7 @@ async fn main() {
     utils::tracing_telemetry::init_tracing(
         "agent-ha-node",
         cli_args.tracing_tags.clone(),
-        None,
-        //cli_args.jaeger.clone(),
+        cli_args.jaeger.clone(),
     );
 
     // Instantinate path failure detector.

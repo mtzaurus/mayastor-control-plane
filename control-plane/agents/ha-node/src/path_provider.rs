@@ -63,11 +63,13 @@ enum CacheOp {
 /// to NVMe subsystem.
 /// Frontend: (NvmePathNameCollection), which represents a cache for all known NVMe
 /// paths in the system. Note: we only cache paths that represent NVMe targets with product's
+/// In order to eliminate cache inconsistency, there must be only one front-end path collection.
 /// NQN, so cache acts as a filter for 'unknown' NQNs.
 /// To eliminate locking/contention, backend communicates with frontend via a lockless queue.
 #[derive(Debug)]
 pub struct CachedNvmePathProvider {
     udev_queue: Arc<SegQueue<CacheOp>>,
+    frontend: Option<NvmePathNameCollection>,
 }
 
 impl CachedNvmePathProvider {
@@ -132,16 +134,17 @@ impl CachedNvmePathProvider {
     }
 
     /// Get a front-end path collection for this name provider.
-    /// In order to eliminate cache inconsistency, there must be only
-    /// one front-end path collection.
-    pub fn get_path_collection(&self) -> Option<NvmePathNameCollection> {
-        Some(NvmePathNameCollection::new(Arc::clone(&self.udev_queue)))
+    pub fn get_path_collection(&mut self) -> Option<NvmePathNameCollection> {
+        self.frontend.take()
     }
 
     /// Create a new cached name provider.
     pub async fn new() -> anyhow::Result<Self> {
+        let q = Arc::new(SegQueue::new());
+
         Ok(Self {
-            udev_queue: Arc::new(SegQueue::new()),
+            frontend: Some(NvmePathNameCollection::new(Arc::clone(&q))),
+            udev_queue: q,
         })
     }
 }
