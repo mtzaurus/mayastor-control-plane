@@ -59,3 +59,9 @@ pub const DEFAULT_CLUSTER_AGENT_SERVER_ADDR: &str = "https://ha-cluster-agent:11
 
 /// The default value to be assigned as node-agent GRPC server addr if not overridden
 pub const DEFAULT_NODE_AGENT_SERVER_ADDR: &str = "https://0.0.0.0:11600";
+
+/// NQN prefix for NVMe targets created by the product.
+pub const NVME_TARGET_NQN_PREFIX: &str = "nqn.2019-05.io.openebs:";
+
+/// NVMe path check period.
+pub const NVME_PATH_CHECK_PERIOD: &str = "3s";

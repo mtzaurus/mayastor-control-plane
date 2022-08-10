@@ -5,7 +5,7 @@ use opentelemetry::KeyValue;
 use structopt::StructOpt;
 use utils::{
     package_description, version_info_str, DEFAULT_CLUSTER_AGENT_SERVER_ADDR,
-    DEFAULT_NODE_AGENT_SERVER_ADDR,
+    DEFAULT_NODE_AGENT_SERVER_ADDR, NVME_PATH_CHECK_PERIOD,
 };
 
 #[macro_use]
@@ -37,8 +37,8 @@ pub struct Cli {
     tracing_tags: Vec<KeyValue>,
 
     /// Path failure detection period.
-    #[structopt(short, long, env = "DETECTION_PERIOD", default_value = "3")]
-    detection_period: u64,
+    #[structopt(short, long, env = "DETECTION_PERIOD", default_value = NVME_PATH_CHECK_PERIOD)]
+    detection_period: humantime::Duration,
 }
 
 static CLUSTER_AGENT_CLIENT: OnceCell<ClusterAgentClient> = OnceCell::new();
@@ -83,5 +83,8 @@ async fn main() {
         .await
         .unwrap();
 
-    detector.start().await;
+    detector
+        .start()
+        .await
+        .expect("Failed to start NVMe path failure detector");
 }

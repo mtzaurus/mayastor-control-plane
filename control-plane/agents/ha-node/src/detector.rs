@@ -1,7 +1,8 @@
 use crate::{
-    path_provider::{CachedNvmePathProvider, NvmePathProvider},
+    path_provider::{CachedNvmePathProvider, NvmePathNameCollection},
     Cli,
 };
+use futures::{future::FutureExt, pin_mut, select};
 use nvmeadm::nvmf_subsystem::Subsystem;
 use std::collections::HashMap;
 use tokio::time::{sleep, Duration};
@@ -46,6 +47,7 @@ impl PathRecord {
         self.epoch = epoch;
     }
 
+    // Trigger state transition based on 'connecting' state of the underlying NVMe controller.
     fn report_connecting(&mut self) {
         match self.state {
             PathState::Good => {
@@ -68,29 +70,25 @@ impl PathRecord {
 #[derive(Debug)]
 pub struct PathFailureDetector {
     epoch: u64,
-    _detection_period: Duration,
-    path_provider: CachedNvmePathProvider,
+    detection_period: Duration,
     suspected_paths: HashMap<String, PathRecord>,
 }
 
 impl PathFailureDetector {
     pub async fn new(args: &Cli) -> anyhow::Result<Self> {
-        let path_provider = CachedNvmePathProvider::new().await?;
-
         Ok(Self {
             epoch: 0,
-            _detection_period: Duration::from_secs(args.detection_period),
-            path_provider,
+            detection_period: *args.detection_period,
             suspected_paths: HashMap::new(),
         })
     }
 
-    fn rescan_paths(&mut self) {
+    fn rescan_paths(&mut self, path_collection: &mut NvmePathNameCollection) {
         // Update epoch before scanning controllers.
         self.epoch += 1;
 
         // Scan all reported NVMe paths on system and check for connectivity.
-        for ctrlr in self.path_provider.get_entries() {
+        for ctrlr in path_collection.get_entries() {
             match Subsystem::new(ctrlr.path()) {
                 Ok(subsystem) => {
                     let existing_record = match subsystem.state.as_str() {
@@ -120,11 +118,7 @@ impl PathFailureDetector {
                     }
                 }
                 Err(e) => {
-                    error!(
-                        "Failed to get status for NVMe subsystem {}: {}",
-                        ctrlr.name(),
-                        e
-                    );
+                    error!("Failed to get status for NVMe path: {}", e);
                 }
             }
         }
@@ -149,13 +143,32 @@ impl PathFailureDetector {
         }
     }
 
-    pub async fn start(mut self) {
-        self.rescan_paths();
+    /// Start NVMe path error detection loop.
+    pub async fn start(mut self) -> anyhow::Result<()> {
+        let mut path_provider = CachedNvmePathProvider::new().await?;
+        let mut path_collection = path_provider.get_path_collection().unwrap();
+        let f1 = path_provider.start().fuse();
+        pin_mut!(f1);
+
+        info!(
+            "Starting NVMe path error detection loop, path detection interval: {:?}",
+            self.detection_period,
+        );
 
         loop {
-            info!("Sleeping ...");
-            sleep(Duration::from_secs(3)).await;
-            self.rescan_paths();
+            let f2 = sleep(self.detection_period).fuse();
+            pin_mut!(f2);
+
+            select! {
+                () = f1 => {
+                    warn!("NVMe path provider completed, stopping error detection");
+                    break;
+                },
+                () = f2 => self.rescan_paths(&mut path_collection),
+            }
         }
+
+        info!("Stopping NVMe path error detection loop");
+        Ok(())
     }
 }
