@@ -10,7 +10,14 @@ use std::{net::SocketAddr, sync::Arc};
 use tonic::transport::Server;
 //use nvmeadm::ConnectArgsBuilder;
 use crate::path_provider::get_nvme_path_buf;
-use nvmeadm::nvmf_subsystem::Subsystem;
+use nvmeadm::{
+    nvmf_discovery::{ConnectArgs, ConnectArgsBuilder},
+    nvmf_subsystem::Subsystem,
+};
+use utils::NVME_TARGET_NQN_PREFIX;
+
+/// Common error source name for all gRPC errors in HA Node agent.
+const HA_AGENT_ERR_SOURCE: &str = "HA Node agent gRPC server";
 
 pub struct NodeAgentApiServer {
     endpoint: SocketAddr,
@@ -56,7 +63,7 @@ fn disconnect_controller(ctrlr: &NvmeController) -> Result<(), ReplyError> {
             let subsystem = Subsystem::new(pbuf.as_path()).map_err(|_| {
                 ReplyError::internal_error(
                     ResourceKind::Nexus,
-                    "gRPC server".to_string(),
+                    HA_AGENT_ERR_SOURCE.to_string(),
                     "Failed to get NVMe subsystem for controller".to_string(),
                 )
             })?;
@@ -69,7 +76,7 @@ fn disconnect_controller(ctrlr: &NvmeController) -> Result<(), ReplyError> {
             subsystem.disconnect().map_err(|e| {
                 ReplyError::internal_error(
                     ResourceKind::Nexus,
-                    "gRPC server".to_string(),
+                    HA_AGENT_ERR_SOURCE.to_string(),
                     format!(
                         "Failed to disconnect NVMe controller {}: {:?}",
                         ctrlr.path, e,
@@ -85,10 +92,32 @@ fn disconnect_controller(ctrlr: &NvmeController) -> Result<(), ReplyError> {
 
             Err(ReplyError::internal_error(
                 ResourceKind::Nexus,
-                "gRPC server".to_string(),
+                HA_AGENT_ERR_SOURCE.to_string(),
                 "Failed to get system path for controller".to_string(),
             ))
         }
+    }
+}
+
+impl NodeAgentSvc {
+    fn get_nvmf_connection_args(&self, new_path: &str) -> Option<ConnectArgs> {
+        let uri = new_path.parse::<Uri>().ok()?;
+
+        let host = uri.host()?;
+        let port = uri.port()?.to_string();
+        let nqn = &uri.path()[1 ..];
+
+        // Check NQN of the subsystem to make sure it belongs to the product.
+        if !nqn.starts_with(NVME_TARGET_NQN_PREFIX) {
+            return None;
+        }
+
+        ConnectArgsBuilder::default()
+            .traddr(host)
+            .trsvcid(port)
+            .nqn(nqn)
+            .build()
+            .ok()
     }
 }
 
@@ -97,6 +126,19 @@ impl NodeAgentOperations for NodeAgentSvc {
     async fn replace_path(&self, request: &dyn ReplacePathInfo) -> Result<(), ReplyError> {
         tracing::info!("Replacing failed NVMe path: {:?}", request);
 
+        // Parse URI in advance to make sure it's well-formed before using it.
+        let connect_args = match self.get_nvmf_connection_args(&request.new_path()) {
+            Some(ca) => ca,
+            None => {
+                return Err(ReplyError::invalid_argument(
+                    ResourceKind::Nexus,
+                    "new_path",
+                    HA_AGENT_ERR_SOURCE.to_string(),
+                ))
+            }
+        };
+
+        // Lookup NVMe controller whose path has failed.
         let ctrlr = self
             .path_cache
             .lookup_controller(request.target_nqn())
@@ -104,7 +146,7 @@ impl NodeAgentOperations for NodeAgentSvc {
             .map_err(|_| {
                 ReplyError::internal_error(
                     ResourceKind::Nexus,
-                    "gRPC server".to_string(),
+                    HA_AGENT_ERR_SOURCE.to_string(),
                     "Failed to lookup controller".to_string(),
                 )
             })?;
@@ -112,9 +154,26 @@ impl NodeAgentOperations for NodeAgentSvc {
         // Step 1: populate an aditional healthy path to target NQN in addition to
         // existing failed path. Once this additional path is created, client I/O
         // automatically resumes.
+        tracing::info!(uri=%request.new_path(), "Connecting to NVMe target");
+        match connect_args.connect() {
+            Ok(_) => {
+                tracing::info!(uri=%request.new_path(), "Successfully connected to NVMe target");
+            }
+            Err(error) => {
+                tracing::error!(
+                    uri=%request.new_path(),
+                    error=%error,
+                    "Failed to connect to NVMe target"
+                );
+                return Err(ReplyError::internal_error(
+                    ResourceKind::Nexus,
+                    HA_AGENT_ERR_SOURCE.to_string(),
+                    "Failed to connect to NVMe target".to_string(),
+                ));
+            }
+        }
 
         // Step 2: disconnect broken path.
         disconnect_controller(&ctrlr)
-        // Ok(())
     }
 }
