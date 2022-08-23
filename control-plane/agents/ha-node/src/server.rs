@@ -173,7 +173,18 @@ impl NodeAgentOperations for NodeAgentSvc {
             }
         }
 
-        // Step 2: disconnect broken path.
-        disconnect_controller(&ctrlr)
+        // Step 2: disconnect broken path to leave the only new healthy path.
+        // Note that errors under disconnection are not critical, since the second I/O
+        // path has been successfully created, so having the first failed path in addition
+        // to the second healthy one is OK: just display a warning and proceed as if
+        // the call has completed successfully.
+        disconnect_controller(&ctrlr).or_else(|e| {
+            tracing::warn!(
+                uri=%request.new_path(),
+                error=%e,
+                "Failed to disconnect failed path"
+            );
+            Ok(())
+        })
     }
 }
